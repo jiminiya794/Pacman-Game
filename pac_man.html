@@ -45,11 +45,17 @@
       -webkit-font-smoothing: antialiased;
     }
 
+    @supports (height: 100dvh) {
+      body { height: 100dvh; min-height: 100dvh; }
+      .game-shell { height: 100dvh; }
+    }
+
     button { font: inherit; }
 
     .game-shell {
       width: min(100%, 760px);
       height: 100vh;
+      height: 100dvh;
       margin: 0 auto;
       padding: clamp(0.5rem, 1.5vh, 1rem) clamp(0.75rem, 3vw, 1.5rem);
       display: flex;
@@ -141,7 +147,7 @@
     .game-stage {
       position: relative;
       width: auto;
-      height: min(597px, calc(100vh - 12rem));
+      height: min(55vh, 597px);
       max-width: 100%;
       margin-inline: auto;
       align-self: center;
@@ -352,6 +358,11 @@
 
       const canvas = document.getElementById("gameCanvas");
       const ctx = canvas.getContext("2d");
+      const gameShell = document.querySelector(".game-shell");
+      const gameStage = document.querySelector(".game-stage");
+      const masthead = document.querySelector(".masthead");
+      const statsPanel = document.querySelector(".stats");
+      const supportPanel = document.querySelector(".support-panel");
       const overlay = document.getElementById("overlay");
       const overlayKicker = document.getElementById("overlayKicker");
       const overlayTitle = document.getElementById("overlayTitle");
@@ -410,6 +421,61 @@
         { x: 11, y: 9, dir: DIRECTIONS.right },
         { x: 12, y: 9, dir: DIRECTIONS.left }
       ];
+      const LEVEL_MAPS = [
+        {
+          layout: [
+            "###############",
+            "#.............#",
+            "#.###.###.###.#",
+            "#.#...#...#...#",
+            "#.#.#####.###.#",
+            "#...#.....#...#",
+            "###.#.###.#.###",
+            "#...#.#.#.#...#",
+            "#.###.#.#.###.#",
+            "#.#...#.#...#.#",
+            "#.#.###.###.#.#",
+            "#.............#",
+            "###############"
+          ],
+          playerSpawn: { x: 1, y: 1 },
+          ghostSpawns: [
+            { x: 7, y: 5, dir: DIRECTIONS.right },
+            { x: 13, y: 11, dir: DIRECTIONS.left }
+          ]
+        },
+        {
+          layout: [
+            "##################",
+            "#................#",
+            "#.####.####.####.#",
+            "#................#",
+            "#..###.##.##.###.#",
+            "#................#",
+            "#.##.###.##.###..#",
+            "#................#",
+            "#.###.##..##.###.#",
+            "#................#",
+            "#..###.##.##.###.#",
+            "#................#",
+            "#.####.####.####.#",
+            "#................#",
+            "##################"
+          ],
+          playerSpawn: { x: 1, y: 1 },
+          ghostSpawns: [
+            { x: 9, y: 7, dir: DIRECTIONS.right },
+            { x: 3, y: 9, dir: DIRECTIONS.left },
+            { x: 16, y: 13, dir: DIRECTIONS.left }
+          ]
+        },
+        {
+          layout: blueprint,
+          playerSpawn: PLAYER_SPAWN,
+          ghostSpawns: GHOST_SPAWNS
+        }
+      ];
+      let activeMap = LEVEL_MAPS[0];
       const stars = Array.from({ length: 72 }, (_, index) => ({
         x: (index * 89 + 31) % (COLS * TILE),
         y: (index * 47 + 17) % (ROWS * TILE),
@@ -439,7 +505,7 @@
       }
 
       function isWalkable(x, y) {
-        return blueprint[y] && blueprint[y][x] === ".";
+        return activeMap.layout[y] && activeMap.layout[y][x] === ".";
       }
 
       function isCentered(entity) {
@@ -462,12 +528,12 @@
       function resetEntities() {
         const level = LEVELS[state.levelIndex];
         state.player = {
-          x: PLAYER_SPAWN.x + 0.5,
-          y: PLAYER_SPAWN.y + 0.5,
+          x: activeMap.playerSpawn.x + 0.5,
+          y: activeMap.playerSpawn.y + 0.5,
           dir: cloneDirection(DIRECTIONS.none),
           nextDir: cloneDirection(DIRECTIONS.left)
         };
-        state.ghosts = GHOST_SPAWNS.slice(0, level.monsters).map((spawn, index) => ({
+        state.ghosts = activeMap.ghostSpawns.slice(0, level.monsters).map((spawn, index) => ({
           x: spawn.x + 0.5,
           y: spawn.y + 0.5,
           dir: cloneDirection(spawn.dir),
@@ -477,18 +543,20 @@
       }
 
       function prepareCoins() {
+        const layout = activeMap.layout;
         state.coins = new Set();
-        for (let y = 0; y < ROWS; y += 1) {
-          for (let x = 0; x < COLS; x += 1) {
+        for (let y = 0; y < layout.length; y += 1) {
+          for (let x = 0; x < layout[0].length; x += 1) {
             if (isWalkable(x, y)) state.coins.add(cellKey(x, y));
           }
         }
-        state.coins.delete(cellKey(PLAYER_SPAWN.x, PLAYER_SPAWN.y));
-        GHOST_SPAWNS.forEach((spawn) => state.coins.delete(cellKey(spawn.x, spawn.y)));
+        state.coins.delete(cellKey(activeMap.playerSpawn.x, activeMap.playerSpawn.y));
+        activeMap.ghostSpawns.forEach((spawn) => state.coins.delete(cellKey(spawn.x, spawn.y)));
       }
 
       function loadLevel(index) {
         state.levelIndex = index;
+        activeMap = LEVEL_MAPS[index];
         prepareCoins();
         resetEntities();
         updateHud();
@@ -505,6 +573,23 @@
       function announce(message) {
         screenReaderStatus.textContent = "";
         window.setTimeout(() => { screenReaderStatus.textContent = message; }, 20);
+      }
+
+      function outerHeight(element) {
+        const style = window.getComputedStyle(element);
+        return element.offsetHeight + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+      }
+
+      function fitGameStage() {
+        const shellStyle = window.getComputedStyle(gameShell);
+        const paddingY = parseFloat(shellStyle.paddingTop) + parseFloat(shellStyle.paddingBottom);
+        const paddingX = parseFloat(shellStyle.paddingLeft) + parseFloat(shellStyle.paddingRight);
+        const reservedHeight = outerHeight(masthead) + outerHeight(statsPanel) + outerHeight(supportPanel) + paddingY + 8;
+        const availableHeight = Math.max(100, window.innerHeight - reservedHeight);
+        const availableWidth = Math.max(100, gameShell.clientWidth - paddingX);
+        const stageHeight = Math.min(597, availableHeight, availableWidth * ROWS / COLS);
+        gameStage.style.width = `${Math.floor(stageHeight * COLS / ROWS)}px`;
+        gameStage.style.height = `${Math.floor(stageHeight)}px`;
       }
 
       function showOverlay(kicker, title, copy, action) {
@@ -742,16 +827,24 @@
         });
       }
 
+      function getMapOffset() {
+        return {
+          x: (COLS - activeMap.layout[0].length) * TILE / 2,
+          y: (ROWS - activeMap.layout.length) * TILE / 2
+        };
+      }
+
       function drawMaze() {
-        for (let y = 0; y < ROWS; y += 1) {
-          for (let x = 0; x < COLS; x += 1) {
+        const offset = getMapOffset();
+        for (let y = 0; y < activeMap.layout.length; y += 1) {
+          for (let x = 0; x < activeMap.layout[0].length; x += 1) {
             if (!isWalkable(x, y)) {
               const color = NEON[(x + y * 2 + state.levelIndex) % NEON.length];
               const inset = 2.4;
               ctx.save();
               ctx.shadowColor = color;
               ctx.shadowBlur = 8;
-              roundedRect(x * TILE + inset, y * TILE + inset, TILE - inset * 2, TILE - inset * 2, 5);
+              roundedRect(offset.x + x * TILE + inset, offset.y + y * TILE + inset, TILE - inset * 2, TILE - inset * 2, 5);
               ctx.fillStyle = "#081326";
               ctx.fill();
               ctx.lineWidth = 2;
@@ -764,11 +857,12 @@
       }
 
       function drawCoins() {
+        const offset = getMapOffset();
         state.coins.forEach((key) => {
           const [x, y] = key.split(",").map(Number);
           const pulse = 0.55 + (Math.sin(state.clock * 7 + x * 0.8 + y) + 1) * 0.45;
-          const cx = (x + 0.5) * TILE;
-          const cy = (y + 0.5) * TILE;
+          const cx = offset.x + (x + 0.5) * TILE;
+          const cy = offset.y + (y + 0.5) * TILE;
           ctx.save();
           ctx.globalAlpha = Math.min(1, pulse);
           ctx.fillStyle = "#fff0a5";
@@ -783,8 +877,9 @@
 
       function drawPlayer() {
         const player = state.player;
-        const cx = player.x * TILE;
-        const cy = player.y * TILE;
+        const offset = getMapOffset();
+        const cx = offset.x + player.x * TILE;
+        const cy = offset.y + player.y * TILE;
         const angle = player.dir.name === "none" ? 0 : Math.atan2(player.dir.y, player.dir.x);
         const mouth = 0.16 + Math.abs(Math.sin(state.clock * 13)) * 0.29;
         const invisibleBlink = performance.now() < state.invulnerableUntil && Math.floor(state.clock * 10) % 2 === 0;
@@ -802,8 +897,9 @@
       }
 
       function drawGhost(ghost) {
-        const cx = ghost.x * TILE;
-        const cy = ghost.y * TILE;
+        const offset = getMapOffset();
+        const cx = offset.x + ghost.x * TILE;
+        const cy = offset.y + ghost.y * TILE;
         const r = TILE * 0.36;
         const pupilX = ghost.dir.x * 2.1;
         const pupilY = ghost.dir.y * 2.1;
@@ -877,8 +973,11 @@
 
       actionButton.addEventListener("click", onPrimaryAction);
       document.addEventListener("visibilitychange", () => { state.lastFrame = performance.now(); });
+      window.addEventListener("resize", fitGameStage);
+      document.addEventListener("fullscreenchange", () => requestAnimationFrame(fitGameStage));
 
       startNewRun();
+      fitGameStage();
       requestAnimationFrame(gameLoop);
     })();
   </script>
